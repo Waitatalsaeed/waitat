@@ -304,10 +304,10 @@ var CATS=[
   {id:'fine',name:'مخالفات',truck:true},
   {id:'misc',name:'متفرقات'},
   {id:'shibpay',name:'سداد حساب شيب',nocost:true,from:true,shib:true},
-  {id:'sasco',name:'شحن محفظة ساسكو',nocost:true},
+  {id:'sasco',name:'شحن محفظة ساسكو',nocost:true,hidden:true},
   {id:'draw',name:'مسحوبات شخصية',nocost:true}];
 var CAT={water:{id:'water',name:'تعبئة ماء'}};CATS.forEach(function(c){CAT[c.id]=c});
-var TX={commission:'عمولة',salary:'راتب',advance:'سلفة'};
+var TX={commission:'عمولة',salary:'راتب',advance:'سلفة',lunch:'بدل غداء'};
 var LOSTR=['كل الوايتات مشغولة','المكان بعيد','ما فيه وايت يناسب المكان','أخرى'];
 
 function rd(k){try{var v=localStorage.getItem(NS+k);return v?JSON.parse(v):null}catch(e){return null}}
@@ -438,7 +438,7 @@ function derive(){
   });
   d.pay.forEach(function(p){var c=cs(p.clientId);c.paid+=N(p.amount);if(p.receivedBy&&p.method==='cash')dw(p.receivedBy,p.date).cash+=N(p.amount)});
   d.exp.forEach(function(e){if(e.paidFrom==='worker'&&e.workerId)dw(e.workerId,e.date).exp+=N(e.amount)});
-  d.tx.forEach(function(x){var y=dw(x.workerId,x.date);if(N(x.fromCash))y.txCash+=N(x.amount);if(x.type==='commission')y.commPaid+=N(x.amount)});
+  d.tx.forEach(function(x){var y=dw(x.workerId,x.date);if(x.type==='lunch'){y.lunch=(y.lunch||0)+N(x.amount);return}if(N(x.fromCash))y.txCash+=N(x.amount);if(x.type==='commission')y.commPaid+=N(x.amount)});
   d.ho.forEach(function(h){var y=dw(h.workerId,h.date);y.ho+=N(h.amount);y.closed=true;y.expected=N(h.expected)});
   // client balances, FIFO unpaid count
   Object.keys(d.cs).forEach(function(id){
@@ -457,8 +457,7 @@ function derive(){
 }
 function owed(t){return isPend(t)?0:t.status==='cancel'?N(t.charge):N(t.price)-N(t.discount)}
 function earnsComm(t){return t.status!=='cancel'||N(t.comm)>0}
-function lunchOf(trips){var a=hm(st('lunchFrom')),b=hm(st('lunchTo'));return trips.some(function(t){var m=hm(t.time);return t.status!=='cancel'&&m>=a&&m<b})?sn('lunch'):0}
-function commDay(x){return sumBy(x.trips,function(t){return earnsComm(t)?N(t.comm):0})+lunchOf(x.trips)}
+function commDay(x){return sumBy(x.trips,function(t){return earnsComm(t)?N(t.comm):0})+N(x.lunch)}
 function clientLabel(c){if(!c)return '؟';return (c.code||'----')+(c.name?' · '+c.name:'')}
 function workerOfTruck(tid){var w=rows('workers').filter(function(w){return w.truckId===tid&&w.status!=='موقوف'});return w.filter(function(x){return x.status!=='إجازة'})[0]||w[0]||null}
 function truckLabel(t){if(!t)return '';var w=workerOfTruck(t.id);return t.name||(w?'وايت '+w.name:'وايت')}
@@ -574,7 +573,7 @@ function vHome(){
   var h='<section class="hello"><div class="date">'+dfmt(today,{weekday:'long',day:'numeric',month:'long'})+'</div><div class="sub">'+hijri(today)+'</div></section>';
   h+='<section class="tiles">'+
     '<div class="tile"><span class="k">ردود اليوم</span><span class="big">'+td.n+'</span><span class="s">'+(wait.length?wait.length+' بالانتظار':td.ot?td.ot+' أوفرتايم':'&nbsp;')+'</span></div>'+
-    '<div class="tile"><span class="k">دخل اليوم</span><span class="big">'+fmt(td.rev)+'</span><span class="s">محصل '+fmt(td.collected)+'</span></div>'+
+    '<div class="tile"><span class="k">قيمة ردود اليوم</span><span class="big">'+fmt(td.rev)+'</span><span class="s">آجل منها '+fmt(td.newCredit)+'</span></div>'+
     '<div class="tile"><span class="k">مصاريف اليوم</span><span class="big">'+fmt(dayCost)+'</span><span class="s">ماء وديزل وعمولات</span></div></section>';
   h+='<section class="tiles two">'+
     '<button class="tile good" data-act="go" data-v="report"><span class="k">ربح '+monthShort(m)+' حتى اليوم</span><span class="big">'+fmt(ms.profit)+'</span><span class="s">بعد الرواتب، قبل المسحوبات</span></button>'+
@@ -622,30 +621,33 @@ function vClosing(){
   var h='<div class="monthbar"><button class="mbtn" data-act="cday" data-v="-1" aria-label="اليوم السابق">›</button><h2>'+(day===today?'تقفيل اليوم':'تقفيل '+dayLabel(day))+'<div class="sub" style="font-family:var(--font-body);font-weight:400">'+dfmt(day,{weekday:'long',day:'numeric',month:'long'})+'</div></h2><button class="mbtn" data-act="cday" data-v="1" aria-label="اليوم التالي" '+(day>=today?'disabled':'')+'>‹</button></div>';
   var ws=d.workers.filter(function(w){var x=d.dw[day+'|'+w.id];return (x&&(x.trips.length||x.cash||x.exp||x.ho))||(w.status==='شغال'&&day===today)||Math.abs(custody(w.id,day))>=1});
   if(!ws.length)h+='<section class="card"><div class="empty">ما فيه حركة في هاليوم</div></section>';
-  var tot={n:0,cash:0,comm:0,ho:0,exp:0};
+  var tot={n:0,cash:0,comm:0,ho:0,hoIn:0,hoOut:0,exp:0};
   ws.forEach(function(w){h+=closeCard(w,day,tot)});
   var ps=periodStats(day,day);
   h+='<section class="card"><div class="card-h"><h3>إجمالي اليوم</h3></div><div class="lines">'+
     '<div class="line"><span>الردود</span><b>'+ps.n+(ps.ot?' ('+ps.ot+' أوفرتايم)':'')+'</b></div>'+
-    '<div class="line"><span>الدخل</span><b>'+fmt(ps.rev)+'</b></div>'+
-    '<div class="line"><span>المحصل (كاش وتحويل)</span><b>'+fmt(ps.collected)+'</b></div>'+
-    '<div class="line"><span>آجل جديد</span><b class="owedc">'+fmt(ps.newCredit)+'</b></div>'+
+    '<div class="line"><span>قيمة ردود اليوم</span><b>'+fmt(ps.rev)+'</b></div>'+
+    '<div class="line subl"><span>محصل من ردود اليوم</span><b>'+fmt(ps.paidAt)+'</b></div>'+
+    '<div class="line subl"><span>آجل جديد</span><b class="owedc">'+fmt(ps.newCredit)+'</b></div>'+
+    (ps.disc?'<div class="line subl"><span>خصومات</span><b>'+fmt(ps.disc)+'</b></div>':'')+
+    '<div class="line"><span>سداد آجل قديم</span><b>'+fmt(ps.pays)+'</b></div>'+
+    '<div class="line"><span>إجمالي المحصل اليوم</span><b>'+fmt(ps.collected)+'</b></div>'+
     '<div class="line"><span>العمولات</span><b>'+fmt(ps.comm)+'</b></div>'+
     '<div class="line"><span>الماء والديزل والمصاريف</span><b>'+fmt(ps.water+ps.expTot)+'</b></div>'+
-    '<div class="line"><span>استلمت من السواقين</span><b>'+fmt(tot.ho)+'</b></div></div></section>';
+    '<div class="line"><span>استلمت من السواقين</span><b>'+fmt(tot.hoIn)+'</b></div>'+(tot.hoOut?'<div class="line"><span>عطيت السواقين</span><b>'+fmt(tot.hoOut)+'</b></div>':'')+'</div></section>';
   h+='<button class="btn full" data-act="sendDay">إرسال ملخص اليوم بالواتساب</button>';
   return h;
 }
 function closeCard(w,day,tot){
   var d=derive(),x=d.dw[day+'|'+w.id]||{trips:[],cash:0,water:0,exp:0,txCash:0,commPaid:0,ho:0,closed:false};
   var trips=x.trips,done=trips.filter(function(t){return t.status!=='cancel'}),ot=done.filter(function(t){return N(t.ot)}).length;
-  var comm=commDay(x),lunch=lunchOf(trips),prev=custody(w.id,day);
-  var truck=S.trucks[w.truckId];
+  var comm=commDay(x),lunch=N(x.lunch),prev=custody(w.id,day);
+  var truck=truckForDay(w,day);
   var dieselLogged=d.exp.filter(function(e){return e.cat==='diesel'&&e.date===day&&(e.workerId===w.id||(truck&&e.truckId===truck.id))});
   var commLeft=Math.max(0,comm-x.commPaid);
   var takeComm=CL[w.id+'|'+day]===undefined?true:CL[w.id+'|'+day];
   var expected=prev+x.cash-x.water-x.exp-x.txCash-x.ho-(x.closed?0:(takeComm?commLeft:0));
-  tot.ho+=x.ho;
+  tot.ho+=x.ho;d.ho.forEach(function(r){if(r.workerId===w.id&&r.date===day){if(N(r.amount)>0)tot.hoIn+=N(r.amount);else tot.hoOut-=N(r.amount)}});
   var h='<section class="card close-card"><div class="person"><div class="person-h"><div><b>'+esc(w.name)+'</b><div class="sub">'+esc(truck?truckLabel(truck):'بدون وايت')+' · وردية '+(N(w.shift)===2?'الظهر':'الصبح')+'</div></div>'+
     (x.closed?'<span class="chip c-ok">تقفل</span>':trips.length?'<span class="chip c-owed">ما تقفل</span>':'<span class="chip c-mute">'+esc(w.status||'شغال')+'</span>')+'</div>';
   if(trips.length)h+='<div class="tripmini">'+trips.map(function(t){var c=S.clients[t.clientId];return '<button data-act="trip" data-id="'+t.id+'"><span class="code">'+esc(c?c.code:'----')+'</span>'+chipM(t)+(N(t.ot)?'<span class="chip c-water">أوفر</span>':'')+'</button>'}).join('')+'</div>';
@@ -660,18 +662,30 @@ function closeCard(w,day,tot){
     (!x.closed&&commLeft&&takeComm?'<div class="line"><span>عمولته اليوم من الكاش</span><b>− '+fmt(commLeft)+'</b></div>':'')+
     '<div class="line total"><span>'+(x.closed?(expected>0.5?'باقي عنده':expected<-0.5?'له عندنا':'الحساب مصفّى'):(expected>=0?'المفروض يسلّم':'نعطيه'))+'</span><b>'+fmt(Math.abs(expected))+'</b></div></div>';
   if(canEdit()&&!x.closed){
-    if(truck&&!dieselLogged.length)h+='<button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'">+ عبّى ديزل '+fmt(N(truck.dieselAmount)||sn('dieselAmount'))+' ('+(truck.dieselSource==='cash'?'كاش من السواق':'ساسكو')+')</button>';
-    else if(dieselLogged.length)h+='<div class="sub">ديزل اليوم مسجل: '+fmt(sumBy(dieselLogged,function(e){return N(e.amount)}))+' ريال</div>';
+    h+=dieselHTML(w,day,truck,dieselLogged,true);
+    h+=lunchTog(w,day,x);
     if(commLeft)h+=tog('takeComm','يأخذ عمولته '+fmt(commLeft)+' من الكاش',takeComm,w.id+'|'+day);
     h+='<div class="field"><div class="lbl">'+(expected>=0?'كم استلمت منه؟':'كم أعطيته؟')+'</div><div class="price"><input id="ho-'+w.id+'" class="inp" inputmode="decimal" value="'+esc(HO[day+'|'+w.id]!==undefined?HO[day+'|'+w.id]:Math.round(Math.abs(expected)))+'"></div></div>';
     h+='<button class="btn primary full" data-act="closeW" data-id="'+w.id+'" data-v="'+day+'">تقفيل حساب '+esc(w.name)+'</button>';
-  }else if(canEdit()&&x.closed&&Math.abs(expected)>=1){
+  }else if(canEdit()&&x.closed&&!dieselLogged.length&&truck&&trips.length){
+    h+=dieselHTML(w,day,truck,dieselLogged,false);
+  }
+  if(canEdit()&&x.closed&&Math.abs(expected)>=1){
     h+='<button class="btn" data-act="closeMore" data-id="'+w.id+'" data-v="'+day+'">تسليم إضافي</button>';
   }
   h+='</div></section>';
   return h;
 }
 var CL={},HO={};
+function truckForDay(w,day){var t=S.trucks[w.truckId];if(t)return t;var d=derive(),x=d.dw[day+'|'+w.id];var tr=x?x.trips.filter(function(r){return r.truckId&&S.trucks[r.truckId]}):[];return tr.length?S.trucks[tr[tr.length-1].truckId]:null}
+function dieselHTML(w,day,truck,logged,cashOk){
+  if(!truck)return '';
+  if(logged.length)return '<div class="sub">ديزل اليوم مسجل: '+fmt(sumBy(logged,function(e){return N(e.amount)}))+' ريال ('+(logged.some(function(e){return e.paidFrom==='worker'})?'كاش السواق':'ساسكو')+'). تعدله من صفحة المصاريف.</div>';
+  var amt=fmt(N(truck.dieselAmount)||sn('dieselAmount'));
+  return '<div class="field"><div class="lbl">ديزل '+esc(truckLabel(truck))+' اليوم</div><div class="grid2"><button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'|sasco">ساسكو '+amt+'</button>'+(cashOk?'<button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'|cash">كاش السواق '+amt+'</button>':'')+'</div></div>';
+}
+function lunchOn(wid,day){return derive().tx.filter(function(t){return t.type==='lunch'&&t.workerId===wid&&t.date===day})}
+function lunchTog(w,day,x){var done=x.trips.filter(function(t){return t.status!=='cancel'}).length;if(!done&&!x.lunch)return '';return tog('lunchT','بدل غداء '+fmt(sn('lunch')),N(x.lunch)>0,w.id+'|'+day)}
 
 function vReport(){
   var d=derive(),all=Object.keys(d.months).sort(),m=UI.month,idx=all.indexOf(m);if(idx<0){m=all[all.length-1];idx=all.length-1;UI.month=m}
@@ -722,8 +736,6 @@ function vReport(){
   d.clients.forEach(function(c){var x=d.cs[c.id];if(!x)return;x.unpaid.forEach(function(u){var age=u.date?diff(u.date,today):999;var i=age<30?0:age<60?1:age<90?2:3;ag[i]++;agA[i]+=u.amount})});
   if(ag[0]+ag[1]+ag[2]+ag[3])h+='<section class="card"><div class="card-h"><h3>عمر الآجل</h3><span class="sub">كل العملاء الحين</span></div><div class="lines">'+
     ['أقل من 30 يوم','30 إلى 60 يوم','60 إلى 90 يوم','أكثر من 90 يوم (أو قديم)'].map(function(l,i){return '<div class="line"><span>'+l+'</span><b'+(i>=2&&ag[i]?' class="badc"':'')+'>'+ag[i]+' ردود · '+fmt(agA[i])+'</b></div>'}).join('')+'</div></section>';
-  var sb=sascoBalance();
-  if(d.exp.some(function(e){return e.cat==='sasco'}))h+='<section class="card"><div class="lines"><div class="line"><span>رصيد ساسكو المتوقع (الشحن ناقص التفويل)</span><b>'+fmt(sb)+'</b></div></div></section>';
   h+='<button class="btn full" data-act="sendMonth">إرسال ملخص الشهر بالواتساب</button>';
   return h;
 }
@@ -847,9 +859,8 @@ function vSettings(){
   function f(k,label,hint,mode){return '<label class="field"><span class="lbl">'+label+'</span><input class="inp" data-set="'+k+'" value="'+esc(st(k)==='24:00'?'00:00':st(k))+'"'+(mode==='time'?' type="time"':mode?' inputmode="'+mode+'"':'')+(ro?' disabled':'')+'>'+(hint?'<span class="hint">'+hint+'</span>':'')+'</label>'}
   var h='<button class="link" data-act="go" data-v="more">› المزيد</button>';
   h+='<section class="card"><div class="card-h"><h3>العمولة والأوفرتايم</h3></div><div class="card-b"><div class="grid2">'+f('commNormal','عمولة الرد العادي','','decimal')+f('commOT','عمولة رد الأوفرتايم','','decimal')+'</div>'+
-    '<div class="grid2">'+f('shift1End','نهاية وردية الصبح','بعدها أوفرتايم','time')+f('shift2End','نهاية وردية الظهر','12:00 ص يعني نص الليل','time')+'</div>'+
     '<div class="grid2">'+f('lunch','بدل الغداء','','decimal')+f('dayCutoff','بداية اليوم الجديد','الردود قبلها تنحسب على أمس','time')+'</div>'+
-    '<div class="grid2">'+f('lunchFrom','الغداء من','','time')+f('lunchTo','الغداء إلى','','time')+'</div><div class="hint">بدل الغداء ينحسب مرة باليوم للسواق اللي عنده رد في فترة الظهر.</div></div></section>';
+    '<div class="hint">بدل الغداء يتشغل لكل سواق من شاشة التقفيل.</div></div></section>';
   h+='<section class="card"><div class="card-h"><h3>التكاليف</h3></div><div class="card-b"><div class="hint">سعر التعبئة يجي من الشيب اللي يعبي منه الوايت (المزيد ثم الشيبات). الخانتين تحت بس لو ما سجلت شيبات.</div>'+f('waterCost','تكلفة التعبئة لو الشيب مو مسجل','','decimal')+
     '<div class="field"><span class="lbl">مين يدفع تعبئة الماء؟</span><div class="seg two">'+seg(ro?'':'setv','waterBy|worker','السواق من الكاش',st('waterBy'))+seg(ro?'':'setv','waterBy|owners','الملاك',st('waterBy')==='office'?'owners':st('waterBy'))+'</div></div>'+
     f('dieselAmount','مبلغ تفويل الديزل المعتاد','','decimal')+f('defaultPrice','سعر الرد للعميل الجديد','يتعبى تلقائيا ويتعدل وقت الرد','decimal')+'</div></section>';
@@ -896,7 +907,7 @@ function pickClient(id){
   applyDefaults(F.wasPending);
 }
 function selTruck(tid){F.truckId=tid;var w=workerOfTruck(tid);F.workerId=w?w.id:null;recalcOT()}
-function recalcOT(){if(F.otManual)return;F.ot=F.workerId&&isOT(F.time,S.workers[F.workerId])?1:0}
+function recalcOT(){/* الأوفرتايم ما يتشغل تلقائي: الردود تنسجل بالليل، فيشغله راكان بيده للرد اللي فعلا أوفرتايم */}
 function activeShibs(){return rows('shibs').filter(shibOn).sort(function(a,b){return String(a.name).localeCompare(String(b.name))})}
 function defaultShib(cid,wid){
   var d=derive(),i,t;
@@ -957,7 +968,7 @@ function ntHTML(){
     (c.premise&&c.premise!=='خزان'&&!tf.warn?'<div class="hint">'+esc(c.premise)+': يطلع بس الوايت المسموح له</div>':'')+
     '<div class="grid2">'+tf.list.map(function(t){var w=workerOfTruck(t.id);return '<button class="tbtn" data-act="nt-truck" data-id="'+t.id+'" aria-pressed="'+(F.truckId===t.id)+'"><b>'+esc(w?w.name:truckLabel(t))+'</b><span>'+esc(t.name||t.plate||'')+'</span></button>'}).join('')+'</div>';
   if(F.truckId){var ws=rows('workers').filter(function(w){return w.status!=='موقوف'});
-    h+='<label class="sub" style="display:flex;align-items:center;gap:8px">السواق: <select id="nt-worker" class="inp" style="min-height:42px;font-size:15px;flex:1">'+ws.map(function(w){return '<option value="'+w.id+'"'+(w.id===F.workerId?' selected':'')+'>'+esc(w.name)+'</option>'}).join('')+'</select></label>'}
+    h+='<label class="sub" style="display:flex;align-items:center;gap:8px">السواق: <select id="nt-worker" class="inp" style="min-height:42px;font-size:15px;flex:1">'+(F.workerId?'':'<option value="" selected>اختر السواق</option>')+ws.map(function(w){return '<option value="'+w.id+'"'+(w.id===F.workerId?' selected':'')+'>'+esc(w.name)+'</option>'}).join('')+'</select></label>'}
   h+='</div>';
   var sh=activeShibs();if(F.shibId&&S.shibs[F.shibId]&&sh.indexOf(S.shibs[F.shibId])<0)sh.push(S.shibs[F.shibId]);
   if(sh.length)h+='<div class="field"><div class="lbl">يعبي من</div><div class="grid2">'+sh.map(function(s){return '<button class="tbtn" data-act="nt-shib" data-id="'+s.id+'" aria-pressed="'+(F.shibId===s.id)+'"><b>'+esc(s.name)+'</b><span>'+fmt(s.price)+' ريال'+(s.payBy==='account'?' · حساب':'')+'</span></button>'}).join('')+'</div>'+
@@ -974,7 +985,7 @@ function ntHTML(){
     '<input id="nt-note" class="inp" placeholder="ملاحظة (اختياري)" value="'+esc(F.note||'')+'"></div></details>';
   var w=S.workers[F.workerId];
   if((!F.edit||F.wasPending)&&w)h+=tog('nt-wa','أرسل الطلب والموقع لـ'+esc(w.name)+' بالواتساب',F.sendWa&&!!w.phone)+(w.phone?'':'<div class="hint">ما فيه رقم جوال للسواق، أضفه من صفحة العمال</div>');
-  h+='<button class="btn primary full" data-act="nt-save"'+(F.price>0&&F.truckId?'':' disabled')+'>'+(F.wasPending?'تطليع الرد':F.edit?'حفظ التعديل':'حفظ الرد')+'</button>';
+  h+='<button class="btn primary full" data-act="nt-save"'+(F.price>0&&F.truckId&&F.workerId?'':' disabled')+'>'+(F.wasPending?'تطليع الرد':F.edit?'حفظ التعديل':'حفظ الرد')+'</button>';
   if(F.edit)h+=tripCancelHTML();
   return h;
 }
@@ -999,6 +1010,7 @@ function saveTrip(){
     put('trips',base);closeSheet();render();toast(F.mode==='later'?'انحفظ الموعد '+dayLabel(base.date)+' '+t12(base.time):'انحفظ بالانتظار');return;
   }
   if(!F.truckId){toast('اختر الوايت');return}
+  if(!F.workerId||!S.workers[F.workerId]){toast('اختر السواق');return}
   var w=S.workers[F.workerId],sh=S.shibs[F.shibId],method=F.method,paid=(method==='cash'||method==='transfer')?N(F.paid):0;
   if((method==='cash'||method==='transfer')&&paid<=0)method='credit';
   base.date=F.date||workToday();base.time=F.time||nowHM();base.truckId=F.truckId;base.workerId=F.workerId||'';base.workerName=w?w.name:'';
@@ -1006,6 +1018,7 @@ function saveTrip(){
   base.ot=F.ot?1:0;base.shibId=sh?sh.id:'';base.shibName=sh?sh.name:'';base.water=N(F.water);base.waterBy=F.waterBy||'worker';
   if(base.status!=='cancel'){base.status='done';base.comm=commFor(base.ot)}
   put('trips',base);
+  if(w&&!w.truckId&&!workerOfTruck(F.truckId)){var wl=JSON.parse(JSON.stringify(w));wl.truckId=F.truckId;put('workers',wl)}
   var x=derive().cs[c.id]||{};closeSheet();render();
   toast((F.wasPending?'طلع الرد لـ':F.edit?'انحفظ التعديل لـ':'انحفظ الرد لـ')+(c.code||'')+(x.count>0?'. عليه '+x.count+' ردود':x.bal<-0.5?'. باقي رصيده '+fmt(-x.bal):''));
   if((!F.edit||F.wasPending)&&F.sendWa&&w&&w.phone){openUrl(wa(w.phone,'رد جديد\nالعميل: '+clientLabel(c)+(c.premise&&c.premise!=='خزان'?'\nالمكان: '+c.premise:'')+(sh?'\nيعبي من: '+sh.name:'')+(c.location?'\nالموقع: '+c.location:'')+(base.note?'\nملاحظة: '+base.note:'')))}
@@ -1066,18 +1079,22 @@ function clientHTML(id){
 /* ----- payments ----- */
 var P={};
 function openPay(id,m){var x=derive().cs[id]||{};P={id:id,amount:x.bal>0?Math.round(x.bal):'',method:m||'transfer',receivedBy:'',date:workToday()};openSheet((m==='discount'?'خصم لـ':'سداد من ')+clientLabel(S.clients[id]),payHTML)}
+function editPay(pid){var r=S.payments[pid];P={pid:pid,id:r.clientId,amount:r.amount,method:r.method,receivedBy:r.receivedBy||'',date:r.date};confirmArm='';openSheet('تعديل '+(r.method==='discount'?'خصم':'سداد')+' · '+clientLabel(S.clients[r.clientId]),payHTML)}
+function cancelBox(t,id,label){return confirmArm==='rec'+id?'<div class="warnbox">يبقى في السجل بس ما ينحسب.</div><div class="grid2"><button class="btn" data-act="arm2" data-v="">لا</button><button class="btn danger" data-act="rec-cancel" data-v="'+t+'" data-id="'+id+'">إيه، ألغه</button></div>':'<button class="btn danger full" data-act="arm2" data-v="rec'+id+'">'+label+'</button>'}
 function payHTML(){
   var x=derive().cs[P.id]||{bal:0,count:0,unpaid:[]};
   var q=[];if(x.bal>0)q.push([Math.round(x.bal),'الكل ('+x.count+' ردود)']);
   var acc=0;x.unpaid.slice(0,4).forEach(function(u,i){acc+=u.amount;if(i<x.unpaid.length-1)q.push([Math.round(acc),(i+1)+' رد'])});
   var ws=rows('workers').filter(function(w){return w.status!=='موقوف'});
-  return (x.bal>0?'<div class="infobox">عليه '+x.count+' ردود · '+fmt(x.bal)+' ريال</div>':'<div class="infobox">ما عليه شي. أي مبلغ ينحفظ له رصيد مقدم.</div>')+
+  if(P.pid)q=[];
+  return (P.pid?'<div class="infobox">تعدل سداد مسجل يوم '+dayLabel(P.date)+'</div>':x.bal>0?'<div class="infobox">عليه '+x.count+' ردود · '+fmt(x.bal)+' ريال</div>':'<div class="infobox">ما عليه شي. أي مبلغ ينحفظ له رصيد مقدم.</div>')+
     '<div class="field"><div class="lbl">كم دفع؟</div><div class="price"><input id="pay-amt" class="inp" inputmode="decimal" value="'+(P.amount||'')+'"></div>'+
     (q.length?'<div class="filters">'+q.map(function(v){return '<button class="sb" data-act="pay-q" data-v="'+v[0]+'">'+v[1]+'</button>'}).join('')+'</div>':'')+'</div>'+
     '<div class="field"><div class="lbl">النوع</div><div class="seg three">'+seg('pay-m','transfer','تحويل',P.method)+seg('pay-m','cash','كاش',P.method)+seg('pay-m','discount','خصم',P.method,'owedsel')+'</div>'+(P.method==='discount'?'<div class="hint">الخصم ينزل من اللي عليه وما ينحسب محصل. يطلع في الحسابات تحت «الخصومات».</div>':'')+'</div>'+
     (P.method==='cash'?'<div class="field"><div class="lbl">مين استلم الكاش؟</div><div class="grid2">'+seg('pay-by','','الملاك',P.receivedBy)+ws.map(function(w){return seg('pay-by',w.id,esc(w.name),P.receivedBy)}).join('')+'</div><div class="hint">لو استلمه السواق ينضاف لعهدته في التقفيل</div></div>':'')+
     '<label class="field"><span class="lbl">اليوم</span><input id="pay-date" type="date" class="inp" value="'+esc(P.date)+'"></label>'+
-    '<button class="btn primary full" data-act="pay-save">'+(P.method==='discount'?'حفظ الخصم':'حفظ السداد')+'</button>';
+    '<button class="btn primary full" data-act="pay-save">'+(P.pid?'حفظ التعديل':P.method==='discount'?'حفظ الخصم':'حفظ السداد')+'</button>'+
+    (P.pid?cancelBox('payments',P.pid,'إلغاء هذا '+(P.method==='discount'?'الخصم':'السداد')):'');
 }
 
 /* ----- statement ----- */
@@ -1096,26 +1113,28 @@ var stmtAmt=true;
 function openStmt(id){openSheet('كشف حساب',function(){var c=S.clients[id],t=stmtText(id,stmtAmt);return tog('stmt-amt','أظهر المبالغ',stmtAmt)+'<pre class="statement">'+esc(t)+'</pre><div class="grid2"><button class="btn" data-act="copy" data-v="'+esc(t)+'">نسخ الكشف</button>'+(c.phone?'<button class="btn primary" data-act="openwa" data-v="'+esc(wa(c.phone,t))+'">إرسال للعميل</button>':'<button class="btn primary" data-act="openwa" data-v="'+esc(wa('',t))+'">إرسال بالواتساب</button>')+'</div><button class="btn full" data-act="client" data-id="'+id+'">رجوع للعميل</button>'})}
 
 /* ----- expenses ----- */
-function expGrid(){return '<div class="catgrid">'+CATS.map(function(c){return '<button class="'+(c.nocost?'alt':'')+'" data-act="expCat" data-v="'+c.id+'">'+c.name+'</button>'}).join('')+'</div><div class="hint">الأزرار المتقطعة مو مصاريف: تنحفظ لحالها وما تنقص الربح. الرواتب والعمولات والسلف من صفحة العامل.</div>'}
+function expGrid(){return '<div class="catgrid">'+CATS.filter(function(c){return !c.hidden}).map(function(c){return '<button class="'+(c.nocost?'alt':'')+'" data-act="expCat" data-v="'+c.id+'">'+c.name+'</button>'}).join('')+'</div><div class="hint">الأزرار المتقطعة مو مصاريف: تنحفظ لحالها وما تنقص الربح. الرواتب والعمولات والسلف من صفحة العامل.</div>'}
 var E={};
 function openExp(cat,preset){E=Object.assign({cat:cat,amount:'',truckId:'',paidFrom:'office',workerId:'',note:'',date:workToday()},preset||{});
+  if(cat==='diesel'&&E.paidFrom==='office')E.paidFrom='sasco';
   if(CAT[cat].truck&&!E.truckId){var t=rows('trucks').filter(function(t){return t.status!=='واقف'})[0];E.truckId=t?t.id:''}
   if(cat==='diesel'&&E.truckId&&!preset){var tr=S.trucks[E.truckId];E.amount=N(tr.dieselAmount)||sn('dieselAmount');E.paidFrom=tr.dieselSource==='cash'?'worker':'sasco';if(E.paidFrom==='worker')E.workerId=(workerOfTruck(tr.id)||{}).id||''}
-  openSheet(CAT[cat].name,expHTML)}
+  openSheet((E.id?'تعديل ':'')+CAT[cat].name,expHTML)}
 function expHTML(){
   var c=CAT[E.cat],h='';
   if(E.cat==='draw')h+='<div class="infobox">المسحوبات تنسجل لحالها وما تنقص من ربح الشغل، تنخصم من الصافي.</div>';
   if(E.cat==='sasco')h+='<div class="infobox">شحن المحفظة يعني حولتوا فلوس لتطبيق ساسكو، وهذا مو مصروف. المصروف هو «ديزل (تفويل)» لما الوايت يعبي. نسجل الشحن عشان نطابق رصيد المحفظة.</div>';
-  if(E.cat==='diesel')h+='<div class="infobox">هذا التفويل نفسه لوايت معين، وهو اللي ينحسب مصروف. عادة ينسجل بضغطة من شاشة التقفيل.</div>';
+  if(E.cat==='diesel')h+='<div class="infobox">الديزل ينسجل عادة بضغطة من شاشة التقفيل. «ساسكو» يعني انصرف من حساب ساسكو، و«كاش السواق» يعني السواق دفعه وينخصم من اللي يسلمه.</div>';
   if(E.cat==='shibpay'){var acc=rows('shibs').filter(function(sb){return sb.payBy==='account'});
     h+='<div class="field"><div class="lbl">أي شيب؟</div><div class="grid2">'+acc.map(function(sb){return seg('ex-shib',sb.id,esc(sb.name)+' (باقي '+fmt(shibOwed(sb.id))+')',E.shibId)}).join('')+'</div>'+(acc.length?'':'<div class="hint">ما فيه شيب حسابه آجل</div>')+'</div>'}
   h+='<div class="field"><div class="lbl">المبلغ</div><div class="price"><input id="ex-amt" class="inp" inputmode="decimal" value="'+esc(E.amount)+'" placeholder="0"></div></div>';
   if(c.truck)h+='<div class="field"><div class="lbl">أي وايت؟</div><div class="grid2">'+seg('ex-truck','','بدون',E.truckId)+rows('trucks').map(function(t){return seg('ex-truck',t.id,esc(truckLabel(t)),E.truckId)}).join('')+'</div></div>';
   if(!c.nocost||c.from){var ws=rows('workers').filter(function(w){return w.status!=='موقوف'});
-    h+='<div class="field"><div class="lbl">من وين انصرف؟</div><div class="seg '+(c.sasco?'three':'two')+'">'+seg('ex-from','office','الملاك',E.paidFrom)+seg('ex-from','worker','كاش السواق',E.paidFrom)+(c.sasco?seg('ex-from','sasco','ساسكو',E.paidFrom):'')+'</div>'+
+    h+='<div class="field"><div class="lbl">من وين انصرف؟</div><div class="seg two">'+(c.sasco?seg('ex-from','sasco','ساسكو',E.paidFrom):seg('ex-from','office','الملاك',E.paidFrom))+seg('ex-from','worker','كاش السواق',E.paidFrom)+'</div>'+
     (E.paidFrom==='worker'?'<div class="grid2">'+ws.map(function(w){return seg('ex-w',w.id,esc(w.name),E.workerId)}).join('')+'</div><div class="hint">ينخصم من اللي عليه يسلمه في التقفيل</div>':'')+'</div>';}
   h+='<div class="grid2"><label class="field"><span class="lbl">اليوم</span><input id="ex-date" type="date" class="inp" value="'+esc(E.date)+'"></label><label class="field"><span class="lbl">ملاحظة</span><input id="ex-note" class="inp" value="'+esc(E.note)+'"></label></div>';
-  h+='<button class="btn primary full" data-act="ex-save">حفظ</button>';
+  h+='<button class="btn primary full" data-act="ex-save">'+(E.id?'حفظ التعديل':'حفظ')+'</button>';
+  if(E.id)h+=cancelBox('expenses',E.id,'إلغاء هذا المصروف');
   return h;
 }
 function saveExp(){
@@ -1123,8 +1142,9 @@ function saveExp(){
   if(E.paidFrom==='worker'&&!E.workerId){toast('اختر السواق');return}
   var c=CAT[E.cat];
   if(c.shib&&!E.shibId){toast('اختر الشيب');return}
-  put('expenses',{date:E.date||workToday(),cat:E.cat,amount:amt,shibId:c.shib?E.shibId:'',truckId:c.truck?E.truckId:'',paidFrom:c.nocost&&!c.from?'office':E.paidFrom,workerId:E.paidFrom==='worker'?E.workerId:'',note:E.note||'',status:''});
-  closeSheet();render();toast('انحفظ: '+c.name+' '+fmt(amt)+' ريال');
+  var erow={date:E.date||workToday(),cat:E.cat,amount:amt,shibId:c.shib?E.shibId:'',truckId:c.truck?E.truckId:'',paidFrom:c.nocost&&!c.from?'office':E.paidFrom,workerId:E.paidFrom==='worker'?E.workerId:'',note:E.note||'',status:''};if(E.id)erow.id=E.id;
+  put('expenses',erow);
+  closeSheet();render();toast((E.id?'انحفظ التعديل: ':'انحفظ: ')+c.name+' '+fmt(amt)+' ريال');
 }
 
 /* ----- workers ----- */
@@ -1153,7 +1173,7 @@ function openWorker(id){openSheet(S.workers[id].name,function(){
   h+='<div class="stats"><div class="stat"><span>ردود الشهر</span><b>'+mt+'</b></div><div class="stat"><span>عمولة الشهر</span><b>'+fmt(mc)+'</b></div><div class="stat"><span>الراتب</span><b>'+fmt(w.salary)+'</b></div></div>';
   if(canEdit())h+='<div class="acts"><button class="btn primary" data-act="wtx" data-id="'+id+'">صرف له</button><button class="btn" data-act="workerEdit" data-id="'+id+'">تعديل</button></div>';
   h+='<button class="btn full" data-act="wstmt" data-id="'+id+'">كشف الشهر بالواتساب</button>';
-  var tx=d.tx.filter(function(x){return x.workerId===id}).sort(function(a,b){return a.date<b.date?1:-1}).slice(0,20);
+  var tx=d.tx.filter(function(x){return x.workerId===id&&x.type!=='lunch'}).sort(function(a,b){return a.date<b.date?1:-1}).slice(0,20);
   if(tx.length)h+='<section class="card"><div class="card-h"><h3>المصروف له</h3></div><ul class="list">'+tx.map(function(x){return '<li><button class="row" data-act="txView" data-id="'+x.id+'"><span class="time">'+dayLabel(x.date)+'</span><span class="main"><b>'+(TX[x.type]||x.type)+'</b><small>'+(N(x.fromCash)?'من الكاش اللي معه':'من الملاك')+(x.note?' · '+esc(x.note):'')+'</small></span><span class="amt">'+fmt(x.amount)+'</span></button></li>'}).join('')+'</ul></section>';
   return h;
 })}
@@ -1317,9 +1337,10 @@ document.addEventListener('click',function(ev){
   case 'pay-m':P.method=v;if(v!=='cash')P.receivedBy='';drawSheet();break;
   case 'pay-by':P.receivedBy=v;drawSheet();break;
   case 'pay-save':var pa=toNum(P.amount);if(!(pa>0)){toast('اكتب المبلغ');break}
-    put('payments',{date:P.date||workToday(),clientId:P.id,clientLabel:clientLabel(S.clients[P.id]),amount:pa,method:P.method,receivedBy:P.method==='cash'?P.receivedBy:'',note:'',status:''});
+    var prow={date:P.date||workToday(),clientId:P.id,clientLabel:clientLabel(S.clients[P.id]),amount:pa,method:P.method,receivedBy:P.method==='cash'?P.receivedBy:'',note:'',status:''};if(P.pid)prow.id=P.pid;
+    put('payments',prow);
     var xx=derive().cs[P.id]||{};toast((P.method==='discount'?'انسجل خصم ':'انسجل سداد ')+fmt(pa)+'. '+(xx.count>0?'باقي '+xx.count+' ردود':'الحساب مسدد'));var pid=P.id;closeSheet();render();openClient(pid);break;
-  case 'payView':openRecord('payments',id,'سداد',function(r){return '<dt>العميل</dt><dd>'+esc(clientLabel(S.clients[r.clientId]))+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>الطريقة</dt><dd>'+METHOD[r.method]+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.receivedBy&&S.workers[r.receivedBy]?'<dt>استلمه</dt><dd>'+esc(S.workers[r.receivedBy].name)+'</dd>':'')});break;
+  case 'payView':if(canEdit()&&S.payments[id]&&S.payments[id].status!=='cancel'){editPay(id);break}openRecord('payments',id,'سداد',function(r){return '<dt>العميل</dt><dd>'+esc(clientLabel(S.clients[r.clientId]))+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>الطريقة</dt><dd>'+METHOD[r.method]+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.receivedBy&&S.workers[r.receivedBy]?'<dt>استلمه</dt><dd>'+esc(S.workers[r.receivedBy].name)+'</dd>':'')});break;
   case 'remind':var c=S.clients[id],x=derive().cs[id];openUrl(wa(c.phone,remindMsg(c,x.count)));if(canEdit()){var cc=JSON.parse(JSON.stringify(c));cc.lastReminded=workToday();put('clients',cc)}break;
   case 'stmt':openStmt(id);break;
   case 'stmt-amt':stmtAmt=!stmtAmt;drawSheet();break;
@@ -1331,17 +1352,21 @@ document.addEventListener('click',function(ev){
   case 'ex-from':E.paidFrom=v;if(v==='worker'&&!E.workerId&&E.truckId)E.workerId=(workerOfTruck(E.truckId)||{}).id||'';drawSheet();break;
   case 'ex-w':E.workerId=v;drawSheet();break;
   case 'ex-save':saveExp();break;
-  case 'expView':openRecord('expenses',id,'مصروف',function(r){return '<dt>النوع</dt><dd>'+esc((CAT[r.cat]||{name:r.cat}).name)+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.note?'<dt>ملاحظة</dt><dd>'+esc(r.note)+'</dd>':'')});break;
-  case 'diesel':var w0=S.workers[id],tk=S.trucks[w0.truckId];if(!tk)break;
-    put('expenses',{date:v,cat:'diesel',amount:N(tk.dieselAmount)||sn('dieselAmount'),truckId:tk.id,paidFrom:tk.dieselSource==='cash'?'worker':'sasco',workerId:tk.dieselSource==='cash'?id:'',note:'تفويل',status:''});render();toast('انسجل الديزل');break;
+  case 'expView':if(canEdit()&&S.expenses[id]&&S.expenses[id].status!=='cancel'){var er=S.expenses[id];confirmArm='';openExp(er.cat,JSON.parse(JSON.stringify(er)));break}openRecord('expenses',id,'مصروف',function(r){return '<dt>النوع</dt><dd>'+esc((CAT[r.cat]||{name:r.cat}).name)+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.note?'<dt>ملاحظة</dt><dd>'+esc(r.note)+'</dd>':'')});break;
+  case 'diesel':var w0=S.workers[id],dv=v.split('|'),tk=truckForDay(w0,dv[0]);if(!tk)break;var dcash=dv[1]==='cash';
+    put('expenses',{date:dv[0],cat:'diesel',amount:N(tk.dieselAmount)||sn('dieselAmount'),truckId:tk.id,paidFrom:dcash?'worker':'sasco',workerId:dcash?id:'',note:'تفويل',status:''});render();toast('انسجل الديزل'+(dcash?' (كاش السواق)':' (ساسكو)'));break;
+  case 'lunchT':var lv=v.split('|'),lw=S.workers[lv[0]],ex0=lunchOn(lv[0],lv[1]);
+    if(ex0.length)ex0.forEach(function(t){var tc=JSON.parse(JSON.stringify(t));tc.status='cancel';put('workerTx',tc)});
+    else put('workerTx',{date:lv[1],workerId:lw.id,workerName:lw.name,type:'lunch',amount:sn('lunch'),fromCash:0,note:'بدل غداء',status:''});
+    render();break;
   case 'takeComm':CL[v]=!(CL[v]===undefined?true:CL[v]);render();break;
   case 'closeW':closeWorker(id,v,false);break;
   case 'closeMore':openSheet('تسليم إضافي',function(){var c=custody(id,addD(v,1));return '<div class="infobox">'+(c>=0?'باقي عند '+esc(S.workers[id].name)+' '+fmt(c):'له عندنا '+fmt(-c))+'</div><div class="price"><input id="ho-'+id+'" class="inp" inputmode="decimal" value="'+Math.round(Math.abs(c))+'"></div><button class="btn primary full" data-act="closeExtra" data-id="'+id+'" data-v="'+v+'">حفظ</button>'});break;
   case 'closeExtra':closeWorker(id,v,true);closeSheet();break;
   case 'cday':var nd=addD(UI.closeDate,+v);if(nd<=workToday()){UI.closeDate=nd;render()}break;
   case 'sendDay':var day=UI.closeDate,ps=periodStats(day,day),dd=derive();
-    var txt=st('businessName')+' - '+dfmt(day,{weekday:'long',day:'numeric',month:'long'})+'\nالردود: '+ps.n+(ps.ot?' (أوفرتايم '+ps.ot+')':'')+'\nالدخل: '+fmt(ps.rev)+'\nالمحصل: '+fmt(ps.collected)+'\nآجل جديد: '+fmt(ps.newCredit)+'\nالعمولات: '+fmt(ps.comm)+'\nالماء والمصاريف: '+fmt(ps.water+ps.expTot)+'\n';
-    dd.workers.forEach(function(w){var x=dd.dw[day+'|'+w.id];if(!x||!x.trips.length)return;txt+='\n'+w.name+': '+x.trips.filter(function(t){return t.status!=='cancel'}).length+' ردود، سلّم '+fmt(x.ho)});
+    var txt=st('businessName')+' - '+dfmt(day,{weekday:'long',day:'numeric',month:'long'})+'\nالردود: '+ps.n+(ps.ot?' (أوفرتايم '+ps.ot+')':'')+'\n\nقيمة ردود اليوم: '+fmt(ps.rev)+'\n- محصل من ردود اليوم: '+fmt(ps.paidAt)+'\n- آجل جديد: '+fmt(ps.newCredit)+(ps.disc?'\n- خصومات: '+fmt(ps.disc):'')+'\nسداد آجل قديم: '+fmt(ps.pays)+'\nإجمالي المحصل اليوم: '+fmt(ps.collected)+'\n\nالعمولات: '+fmt(ps.comm)+'\nالماء والمصاريف: '+fmt(ps.water+ps.expTot)+'\n';
+    dd.workers.forEach(function(w){var x=dd.dw[day+'|'+w.id];if(!x||!x.trips.length)return;txt+='\n'+w.name+': '+x.trips.filter(function(t){return t.status!=='cancel'}).length+' ردود، '+(!x.closed?'ما تقفل':x.ho>0?'سلّم '+fmt(x.ho):x.ho<0?'عطيناه '+fmt(-x.ho):'تقفل بدون تسليم')});
     openUrl(wa(st('reportPhone'),txt));break;
   case 'sendMonth':var m=UI.month,today=workToday(),b2=m+'-'+pad(dim(m)),r=periodStats(m+'-01',b2<today?b2:today);
     openUrl(wa(st('reportPhone'),st('businessName')+' - ملخص '+monthName(m)+'\nالردود: '+r.n+'\nالدخل: '+fmt(r.rev)+'\nالمصاريف: '+fmt(r.costs)+'\nالربح: '+fmt(r.profit)+'\nالمسحوب: '+fmt(r.draw)+'\nالصافي: '+fmt(r.net)+'\nالمحصل: '+fmt(r.collected)+'\nآجل جديد: '+fmt(r.newCredit)));break;
@@ -1425,7 +1450,7 @@ document.addEventListener('input',function(ev){
 });
 document.addEventListener('change',function(ev){
   var t=ev.target,id=t.id,v=t.value;
-  if(id==='nt-worker'){F.workerId=v;recalcOT();drawSheet()}
+  if(id==='nt-worker'){F.workerId=v||null;drawSheet()}
   if(id==='nt-time'){F.time=v||nowHM();F.timeOpen=true;recalcOT();drawSheet()}
   if(id==='nt-date'){F.date=v||workToday();F.timeOpen=true;drawSheet()}
   if(id==='nt-dd'){F.dueDate=v||workToday()}
