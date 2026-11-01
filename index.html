@@ -109,7 +109,7 @@ button.row:hover{background:var(--surface-2)}
 .fab svg{width:20px;height:20px}
 .nav{position:fixed;inset:auto 0 0 0;z-index:24;background:var(--surface);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
-.nav-in{max-width:620px;margin:0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.nav-in{max-width:620px;margin:0 auto;display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
 .nav button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 7px;font-size:12px;color:var(--muted);min-height:58px}
 .nav button svg{width:23px;height:23px}
 .nav button[aria-current="page"]{color:var(--water);font-weight:700}
@@ -267,6 +267,7 @@ td.hl{color:var(--owed);font-weight:700}
       <button data-act="go" data-v="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>الرئيسية</button>
       <button data-act="go" data-v="clients"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5.5 6.5-5.5s5.5 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.7 3 2.5 3.6 5.2"/></svg>العملاء</button>
       <button data-act="go" data-v="closing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>التقفيل</button>
+      <button data-act="go" data-v="expenses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>المصاريف</button>
       <button data-act="go" data-v="report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>الحسابات</button>
       <button data-act="go" data-v="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>المزيد</button>
     </div>
@@ -676,13 +677,17 @@ function closeCard(w,day,tot){
   h+='</div></section>';
   return h;
 }
-var CL={},HO={};
+var CL={},HO={},DZ={};
 function truckForDay(w,day){var t=S.trucks[w.truckId];if(t)return t;var d=derive(),x=d.dw[day+'|'+w.id];var tr=x?x.trips.filter(function(r){return r.truckId&&S.trucks[r.truckId]}):[];return tr.length?S.trucks[tr[tr.length-1].truckId]:null}
 function dieselHTML(w,day,truck,logged,cashOk){
   if(!truck)return '';
   if(logged.length)return '<div class="sub">ديزل اليوم مسجل: '+fmt(sumBy(logged,function(e){return N(e.amount)}))+' ريال ('+(logged.some(function(e){return e.paidFrom==='worker'})?'كاش السواق':'ساسكو')+'). تعدله من صفحة المصاريف.</div>';
-  var amt=fmt(N(truck.dieselAmount)||sn('dieselAmount'));
-  return '<div class="field"><div class="lbl">ديزل '+esc(truckLabel(truck))+' اليوم</div><div class="grid2"><button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'|sasco">ساسكو '+amt+'</button>'+(cashOk?'<button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'|cash">كاش السواق '+amt+'</button>':'')+'</div></div>';
+  var k=day+'|'+w.id,z=DZ[k]||(DZ[k]={amt:N(truck.dieselAmount)||sn('dieselAmount'),src:truck.dieselSource==='cash'&&cashOk?'cash':'sasco'});if(!cashOk)z.src='sasco';
+  return '<div class="field"><div class="lbl">ديزل '+esc(truckLabel(truck))+' اليوم</div>'+
+    '<div class="inline"><span class="sub">المبلغ:</span><input id="dz-'+w.id+'" class="inp" inputmode="decimal" style="flex:1;min-height:44px" value="'+esc(z.amt)+'"></div>'+
+    '<div class="seg two">'+seg('dzSrc',k+'|sasco','ساسكو',k+'|'+z.src)+(cashOk?seg('dzSrc',k+'|cash','كاش السواق',k+'|'+z.src):'')+'</div>'+
+    (cashOk?'':'<div class="hint">الحساب متقفل، فالديزل هنا من ساسكو بس. لو دفعه السواق كاش سجله من المصاريف.</div>')+
+    '<button class="btn" data-act="diesel" data-id="'+w.id+'" data-v="'+day+'">حفظ الديزل</button></div>';
 }
 function lunchOn(wid,day){return derive().tx.filter(function(t){return t.type==='lunch'&&t.workerId===wid&&t.date===day})}
 function lunchTog(w,day,x){var done=x.trips.filter(function(t){return t.status!=='cancel'}).length;if(!done&&!x.lunch)return '';return tog('lunchT','بدل غداء '+fmt(sn('lunch')),N(x.lunch)>0,w.id+'|'+day)}
@@ -755,7 +760,7 @@ function chartSVG(ms){
 
 function vMore(){
   var h='<section class="card"><ul class="list">'+
-    [['workers','العمال','الحسابات والسلف والإقامات'],['shibs','الشيبات','اللي تعبون منها، أسعارها وكشف حسابها'],['trucks','الوايتات','الاستمارات والفحص والزيت'],['expenses','المصاريف','سجل المصاريف وإضافتها'],['lost','طلبات ما انخدمت','الطلبات الضايعة'],['settings','الإعدادات','العمولات والأسعار والتذكير']]
+    [['workers','العمال','الحسابات والسلف والإقامات'],['shibs','الشيبات','اللي تعبون منها، أسعارها وكشف حسابها'],['trucks','الوايتات','الاستمارات والفحص والزيت'],['lost','طلبات ما انخدمت','الطلبات الضايعة'],['settings','الإعدادات','العمولات والأسعار والتذكير']]
     .map(function(x){return '<li><button class="row" data-act="go" data-v="'+x[0]+'"><span class="main"><b>'+x[1]+'</b><small>'+x[2]+'</small></span><span class="muted">‹</span></button></li>'}).join('')+'</ul></section>';
   h+='<section class="card"><div class="card-h"><h3>المزامنة</h3></div><div class="card-b">';
   if(DEMO){h+='<div class="notebox">هذي نسخة تجريبية بأرقام وهمية. البيانات تنحفظ على هالجهاز بس.</div>'+(confirmArm==='reset'?'<div class="warnbox">يرجع البيانات التجريبية من البداية ويمسح اللي جربته.</div><div class="grid2"><button class="btn" data-act="arm" data-v="">لا</button><button class="btn danger" data-act="resetDemo">إيه، رجّعها</button></div>':'<button class="btn" data-act="arm" data-v="reset">إرجاع البيانات التجريبية</button>')}
@@ -833,12 +838,12 @@ function shibStmtHTML(){var sb=S.shibs[SM.id],all=Object.keys(derive().months).s
 }
 function vExpenses(){
   var d=derive(),m=workToday().slice(0,7),r=periodStats(m+'-01',workToday());
-  var h='<button class="link" data-act="go" data-v="more">› المزيد</button>';
+  var h='';
   if(canEdit())h+='<section class="card"><div class="card-h"><h3>سجل مصروف</h3><span class="sub">اختر النوع</span></div><div class="card-b">'+expGrid()+'</div></section>';
   var cats=Object.keys(r.exp).sort(function(a,b){return r.exp[b]-r.exp[a]}),mx=Math.max.apply(null,cats.map(function(c){return r.exp[c]}).concat([1]));
   if(cats.length)h+='<section class="card"><div class="card-h"><h3>مصاريف '+monthShort(m)+'</h3><span class="sub">بدون العمولات والرواتب والماء من الردود</span></div><div class="card-b"><div class="bars">'+cats.map(function(c){return '<div class="barrow"><span>'+CAT[c].name+'</span><b class="num">'+fmt(r.exp[c])+'</b><span class="track"><i style="width:'+(r.exp[c]/mx*100).toFixed(1)+'%"></i></span></div>'}).join('')+'</div></div></section>';
   var rec=rows('expenses').sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0}).slice(0,40);
-  h+='<section class="card"><div class="card-h"><h3>آخر المصاريف</h3></div><ul class="list">'+(rec.length?rec.map(function(e){
+  h+='<section class="card"><div class="card-h"><h3>آخر المصاريف</h3><span class="sub">اضغط على أي مصروف تعدله</span></div><ul class="list">'+(rec.length?rec.map(function(e){
     var t=S.trucks[e.truckId],w=S.workers[e.workerId];
     var from=e.paidFrom==='worker'?'من كاش '+(w?w.name:'السواق'):e.paidFrom==='sasco'?'محفظة ساسكو':'من الملاك';
     return '<li><button class="row" data-act="expView" data-id="'+e.id+'"><span class="time">'+dayLabel(e.date)+'</span><span class="main"><b>'+esc((CAT[e.cat]||{name:e.cat}).name)+(t?' · '+esc(truckLabel(t)):'')+(e.shibId&&S.shibs[e.shibId]?' · '+esc(S.shibs[e.shibId].name):'')+'</b><small>'+esc(from)+(e.note?' · '+esc(e.note):'')+'</small></span><span class="amt"><span class="'+(e.status==='cancel'?'strike':'')+'">'+fmt(e.amount)+'</span></span></button></li>'}).join(''):'<li class="empty">ما فيه مصاريف</li>')+'</ul></section>';
@@ -859,11 +864,11 @@ function vSettings(){
   function f(k,label,hint,mode){return '<label class="field"><span class="lbl">'+label+'</span><input class="inp" data-set="'+k+'" value="'+esc(st(k)==='24:00'?'00:00':st(k))+'"'+(mode==='time'?' type="time"':mode?' inputmode="'+mode+'"':'')+(ro?' disabled':'')+'>'+(hint?'<span class="hint">'+hint+'</span>':'')+'</label>'}
   var h='<button class="link" data-act="go" data-v="more">› المزيد</button>';
   h+='<section class="card"><div class="card-h"><h3>العمولة والأوفرتايم</h3></div><div class="card-b"><div class="grid2">'+f('commNormal','عمولة الرد العادي','','decimal')+f('commOT','عمولة رد الأوفرتايم','','decimal')+'</div>'+
+    '<div class="grid2">'+f('shift1End','نهاية وردية الصبح','بعدها أوفرتايم','time')+f('shift2End','نهاية وردية الظهر','12:00 ص يعني نص الليل','time')+'</div>'+
     '<div class="grid2">'+f('lunch','بدل الغداء','','decimal')+f('dayCutoff','بداية اليوم الجديد','الردود قبلها تنحسب على أمس','time')+'</div>'+
     '<div class="hint">بدل الغداء يتشغل لكل سواق من شاشة التقفيل.</div></div></section>';
-  h+='<section class="card"><div class="card-h"><h3>التكاليف</h3></div><div class="card-b"><div class="hint">سعر التعبئة يجي من الشيب اللي يعبي منه الوايت (المزيد ثم الشيبات). الخانتين تحت بس لو ما سجلت شيبات.</div>'+f('waterCost','تكلفة التعبئة لو الشيب مو مسجل','','decimal')+
-    '<div class="field"><span class="lbl">مين يدفع تعبئة الماء؟</span><div class="seg two">'+seg(ro?'':'setv','waterBy|worker','السواق من الكاش',st('waterBy'))+seg(ro?'':'setv','waterBy|owners','الملاك',st('waterBy')==='office'?'owners':st('waterBy'))+'</div></div>'+
-    f('dieselAmount','مبلغ تفويل الديزل المعتاد','','decimal')+f('defaultPrice','سعر الرد للعميل الجديد','يتعبى تلقائيا ويتعدل وقت الرد','decimal')+'</div></section>';
+  h+='<section class="card"><div class="card-h"><h3>التكاليف</h3></div><div class="card-b"><div class="hint">سعر تعبئة الماء ومين يدفعها تتحدد من كل شيب (المزيد ← الشيبات).</div>'+
+    f('dieselAmount','مبلغ تفويل الديزل المعتاد','لكل وايت تقدر تحدد مبلغه من صفحة الوايتات','decimal')+f('defaultPrice','سعر الرد للعميل الجديد','يتعبى تلقائيا ويتعدل وقت الرد','decimal')+'</div></section>';
   h+='<section class="card"><div class="card-h"><h3>التنبيهات والتذكير</h3></div><div class="card-b"><div class="grid2">'+f('unpaidAlert','ذكّر العميل لما توصل ردوده','عدد ردود','numeric')+f('alertDays','نبّه قبل انتهاء الوثائق','يوم','numeric')+'</div>'+
     f('oilEvery','تغيير الزيت كل','يوم (لكل وايت ممكن يختلف)','numeric')+
     '<label class="field"><span class="lbl">رسالة تذكير السداد</span><textarea class="inp" data-set="remindText"'+(ro?' disabled':'')+'>'+esc(st('remindText'))+'</textarea><span class="hint">{n} ينكتب مكانها عدد الردود. ولو للرقم أكثر من موقع ينضاف اسم الموقع تلقائيا.</span></label></div></section>';
@@ -871,14 +876,20 @@ function vSettings(){
   return h;
 }
 var VIEWS={home:vHome,clients:vClients,closing:vClosing,report:vReport,more:vMore,workers:vWorkers,trucks:vTrucks,shibs:vShibs,expenses:vExpenses,lost:vLost,settings:vSettings};
-var NAVOF={workers:'more',trucks:'more',shibs:'more',expenses:'more',lost:'more',settings:'more'};
+var NAVOF={workers:'more',trucks:'more',shibs:'more',lost:'more',settings:'more'};
 
 /* =================== sheets (forms) =================== */
 var sheetRender=null;
 function openSheet(title,fn){sheetRender=fn;document.getElementById('sheetTitle').textContent=title;drawSheet();document.getElementById('sheetWrap').hidden=false;document.querySelector('.sheet').scrollTop=0}
 function drawSheet(){if(!sheetRender)return;var ae=document.activeElement,id=ae&&ae.id,pos=ae&&ae.selectionStart;document.getElementById('sheetBody').innerHTML=sheetRender();if(id){var el=document.getElementById(id);if(el){el.focus();try{if(pos!=null)el.setSelectionRange(pos,pos)}catch(e){}}}}
 function closeSheet(){document.getElementById('sheetWrap').hidden=true;sheetRender=null}
-var toastT;function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){t.hidden=true},2800)}
+var toastT;function toast(msg,ms){var t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){t.hidden=true},ms||2800)}
+/* تعديل يوم متقفل: ننبه قبل الحفظ، وبعده نقول الفرق بالضبط */
+function onDay(day){var l=dayLabel(day);return l==='اليوم'||l==='أمس'?l:'يوم '+l}
+function isClosed(wid,day){var x=wid&&derive().dw[day+'|'+wid];return !!(x&&x.closed)}
+function closedNote(wid,day){if(!isClosed(wid,day))return '';var w=S.workers[wid];return '<div class="notebox">'+onDay(day)+' تقفل حساب '+esc(w?w.name:'السواق')+'. إذا تغير شي في الكاش، الفرق يطلع في تقفيله الجاي.</div>'}
+function snapC(pairs){var seen={},out=[];pairs.forEach(function(p){var k=p[0]+'|'+p[1];if(!p[0]||seen[k]||!isClosed(p[0],p[1]))return;seen[k]=1;out.push({wid:p[0],day:p[1],c:custody(p[0],addD(p[1],1))})});return out}
+function reportC(snap){var m=[];snap.forEach(function(s){var dl=custody(s.wid,addD(s.day,1))-s.c,w=S.workers[s.wid];if(Math.abs(dl)<1)return;m.push('تقفيل '+(w?w.name:'السواق')+' '+onDay(s.day)+' تغير: '+(dl>0?'صار عنده '+fmt(dl)+' زيادة':'صار له '+fmt(-dl))+'، وتنحسب في تقفيله الجاي')});if(m.length)setTimeout(function(){toast(m.join('. '),7000)},50)}
 
 /* ----- new / edit / dispatch trip ----- */
 var F={};
@@ -986,6 +997,7 @@ function ntHTML(){
   var w=S.workers[F.workerId];
   if((!F.edit||F.wasPending)&&w)h+=tog('nt-wa','أرسل الطلب والموقع لـ'+esc(w.name)+' بالواتساب',F.sendWa&&!!w.phone)+(w.phone?'':'<div class="hint">ما فيه رقم جوال للسواق، أضفه من صفحة العمال</div>');
   h+='<button class="btn primary full" data-act="nt-save"'+(F.price>0&&F.truckId&&F.workerId?'':' disabled')+'>'+(F.wasPending?'تطليع الرد':F.edit?'حفظ التعديل':'حفظ الرد')+'</button>';
+  if(F.edit&&!F.wasPending)h+=closedNote(F.workerId,F.date);
   if(F.edit)h+=tripCancelHTML();
   return h;
 }
@@ -1017,7 +1029,8 @@ function saveTrip(){
   base.method=method;base.paid=paid;base.discount=(method==='cash'||method==='transfer')&&F.restAs==='discount'&&price-paid>0?price-paid:0;
   base.ot=F.ot?1:0;base.shibId=sh?sh.id:'';base.shibName=sh?sh.name:'';base.water=N(F.water);base.waterBy=F.waterBy||'worker';
   if(base.status!=='cancel'){base.status='done';base.comm=commFor(base.ot)}
-  put('trips',base);
+  var snT=F.edit?snapC([[S.trips[F.id].workerId,S.trips[F.id].date],[base.workerId,base.date]]):[];
+  put('trips',base);reportC(snT);
   if(w&&!w.truckId&&!workerOfTruck(F.truckId)){var wl=JSON.parse(JSON.stringify(w));wl.truckId=F.truckId;put('workers',wl)}
   var x=derive().cs[c.id]||{};closeSheet();render();
   toast((F.wasPending?'طلع الرد لـ':F.edit?'انحفظ التعديل لـ':'انحفظ الرد لـ')+(c.code||'')+(x.count>0?'. عليه '+x.count+' ردود':x.bal<-0.5?'. باقي رصيده '+fmt(-x.bal):''));
@@ -1093,6 +1106,7 @@ function payHTML(){
     '<div class="field"><div class="lbl">النوع</div><div class="seg three">'+seg('pay-m','transfer','تحويل',P.method)+seg('pay-m','cash','كاش',P.method)+seg('pay-m','discount','خصم',P.method,'owedsel')+'</div>'+(P.method==='discount'?'<div class="hint">الخصم ينزل من اللي عليه وما ينحسب محصل. يطلع في الحسابات تحت «الخصومات».</div>':'')+'</div>'+
     (P.method==='cash'?'<div class="field"><div class="lbl">مين استلم الكاش؟</div><div class="grid2">'+seg('pay-by','','الملاك',P.receivedBy)+ws.map(function(w){return seg('pay-by',w.id,esc(w.name),P.receivedBy)}).join('')+'</div><div class="hint">لو استلمه السواق ينضاف لعهدته في التقفيل</div></div>':'')+
     '<label class="field"><span class="lbl">اليوم</span><input id="pay-date" type="date" class="inp" value="'+esc(P.date)+'"></label>'+
+    closedNote(P.method==='cash'?P.receivedBy:(P.pid&&S.payments[P.pid]&&S.payments[P.pid].method==='cash'?S.payments[P.pid].receivedBy:''),P.date)+
     '<button class="btn primary full" data-act="pay-save">'+(P.pid?'حفظ التعديل':P.method==='discount'?'حفظ الخصم':'حفظ السداد')+'</button>'+
     (P.pid?cancelBox('payments',P.pid,'إلغاء هذا '+(P.method==='discount'?'الخصم':'السداد')):'');
 }
@@ -1133,6 +1147,7 @@ function expHTML(){
     h+='<div class="field"><div class="lbl">من وين انصرف؟</div><div class="seg two">'+(c.sasco?seg('ex-from','sasco','ساسكو',E.paidFrom):seg('ex-from','office','الملاك',E.paidFrom))+seg('ex-from','worker','كاش السواق',E.paidFrom)+'</div>'+
     (E.paidFrom==='worker'?'<div class="grid2">'+ws.map(function(w){return seg('ex-w',w.id,esc(w.name),E.workerId)}).join('')+'</div><div class="hint">ينخصم من اللي عليه يسلمه في التقفيل</div>':'')+'</div>';}
   h+='<div class="grid2"><label class="field"><span class="lbl">اليوم</span><input id="ex-date" type="date" class="inp" value="'+esc(E.date)+'"></label><label class="field"><span class="lbl">ملاحظة</span><input id="ex-note" class="inp" value="'+esc(E.note)+'"></label></div>';
+  var oldE=E.id&&S.expenses[E.id];h+=closedNote(E.paidFrom==='worker'?E.workerId:(oldE&&oldE.paidFrom==='worker'?oldE.workerId:''),E.date);
   h+='<button class="btn primary full" data-act="ex-save">'+(E.id?'حفظ التعديل':'حفظ')+'</button>';
   if(E.id)h+=cancelBox('expenses',E.id,'إلغاء هذا المصروف');
   return h;
@@ -1143,7 +1158,8 @@ function saveExp(){
   var c=CAT[E.cat];
   if(c.shib&&!E.shibId){toast('اختر الشيب');return}
   var erow={date:E.date||workToday(),cat:E.cat,amount:amt,shibId:c.shib?E.shibId:'',truckId:c.truck?E.truckId:'',paidFrom:c.nocost&&!c.from?'office':E.paidFrom,workerId:E.paidFrom==='worker'?E.workerId:'',note:E.note||'',status:''};if(E.id)erow.id=E.id;
-  put('expenses',erow);
+  var old=E.id&&S.expenses[E.id],snE=snapC([[old&&old.paidFrom==='worker'?old.workerId:'',old&&old.date],[erow.workerId,erow.date]]);
+  put('expenses',erow);reportC(snE);
   closeSheet();render();toast((E.id?'انحفظ التعديل: ':'انحفظ: ')+c.name+' '+fmt(amt)+' ريال');
 }
 
@@ -1329,8 +1345,8 @@ document.addEventListener('click',function(ev){
   case 'cx-water':F.cxWater=!F.cxWater;drawSheet();break;
   case 'trip-cancel':var t0=JSON.parse(JSON.stringify(S.trips[F.id]));t0.status='cancel';t0.comm=F.cxComm?commFor(N(t0.ot)):0;t0.charge=toNum(F.cxCharge);if(!F.cxWater)t0.water=0;
     if(!t0.charge){t0.paid=0;t0.method='credit'}
-    put('trips',t0);closeSheet();render();toast('انلغى الرد');break;
-  case 'trip-restore':var t1=JSON.parse(JSON.stringify(S.trips[F.id]));t1.status='done';t1.comm=commFor(N(t1.ot));t1.charge='';if(!N(t1.water))t1.water=sn('waterCost');put('trips',t1);closeSheet();render();toast('رجع الرد');break;
+    var sn0=snapC([[t0.workerId,t0.date]]);put('trips',t0);closeSheet();render();toast('انلغى الرد');reportC(sn0);break;
+  case 'trip-restore':var t1=JSON.parse(JSON.stringify(S.trips[F.id]));t1.status='done';t1.comm=commFor(N(t1.ot));t1.charge='';if(!N(t1.water))t1.water=sn('waterCost');var sn1=snapC([[t1.workerId,t1.date]]);put('trips',t1);closeSheet();render();toast('رجع الرد');reportC(sn1);break;
   case 'pay':openPay(id);break;
   case 'payPick':openSheet('سداد: اختر العميل',function(){return '<input id="ppq" class="inp codein" inputmode="numeric" placeholder="آخر 4 أرقام" value="'+esc(UI.ppq||'')+'"><div class="picklist" id="pplist">'+payPickList()+'</div>'});break;
   case 'pay-q':P.amount=+v;drawSheet();break;
@@ -1338,7 +1354,8 @@ document.addEventListener('click',function(ev){
   case 'pay-by':P.receivedBy=v;drawSheet();break;
   case 'pay-save':var pa=toNum(P.amount);if(!(pa>0)){toast('اكتب المبلغ');break}
     var prow={date:P.date||workToday(),clientId:P.id,clientLabel:clientLabel(S.clients[P.id]),amount:pa,method:P.method,receivedBy:P.method==='cash'?P.receivedBy:'',note:'',status:''};if(P.pid)prow.id=P.pid;
-    put('payments',prow);
+    var oldP=P.pid&&S.payments[P.pid],snP=snapC([[oldP&&oldP.method==='cash'?oldP.receivedBy:'',oldP&&oldP.date],[prow.receivedBy,prow.date]]);
+    put('payments',prow);reportC(snP);
     var xx=derive().cs[P.id]||{};toast((P.method==='discount'?'انسجل خصم ':'انسجل سداد ')+fmt(pa)+'. '+(xx.count>0?'باقي '+xx.count+' ردود':'الحساب مسدد'));var pid=P.id;closeSheet();render();openClient(pid);break;
   case 'payView':if(canEdit()&&S.payments[id]&&S.payments[id].status!=='cancel'){editPay(id);break}openRecord('payments',id,'سداد',function(r){return '<dt>العميل</dt><dd>'+esc(clientLabel(S.clients[r.clientId]))+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>الطريقة</dt><dd>'+METHOD[r.method]+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.receivedBy&&S.workers[r.receivedBy]?'<dt>استلمه</dt><dd>'+esc(S.workers[r.receivedBy].name)+'</dd>':'')});break;
   case 'remind':var c=S.clients[id],x=derive().cs[id];openUrl(wa(c.phone,remindMsg(c,x.count)));if(canEdit()){var cc=JSON.parse(JSON.stringify(c));cc.lastReminded=workToday();put('clients',cc)}break;
@@ -1353,8 +1370,10 @@ document.addEventListener('click',function(ev){
   case 'ex-w':E.workerId=v;drawSheet();break;
   case 'ex-save':saveExp();break;
   case 'expView':if(canEdit()&&S.expenses[id]&&S.expenses[id].status!=='cancel'){var er=S.expenses[id];confirmArm='';openExp(er.cat,JSON.parse(JSON.stringify(er)));break}openRecord('expenses',id,'مصروف',function(r){return '<dt>النوع</dt><dd>'+esc((CAT[r.cat]||{name:r.cat}).name)+'</dd><dt>المبلغ</dt><dd>'+fmt(r.amount)+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+'</dd>'+(r.note?'<dt>ملاحظة</dt><dd>'+esc(r.note)+'</dd>':'')});break;
-  case 'diesel':var w0=S.workers[id],dv=v.split('|'),tk=truckForDay(w0,dv[0]);if(!tk)break;var dcash=dv[1]==='cash';
-    put('expenses',{date:dv[0],cat:'diesel',amount:N(tk.dieselAmount)||sn('dieselAmount'),truckId:tk.id,paidFrom:dcash?'worker':'sasco',workerId:dcash?id:'',note:'تفويل',status:''});render();toast('انسجل الديزل'+(dcash?' (كاش السواق)':' (ساسكو)'));break;
+  case 'diesel':var w0=S.workers[id],tk=truckForDay(w0,v);if(!tk)break;var zk=v+'|'+id,zz=DZ[zk]||{amt:N(tk.dieselAmount)||sn('dieselAmount'),src:'sasco'},zin=document.getElementById('dz-'+id);if(zin)zz.amt=toNum(zin.value);
+    if(!(N(zz.amt)>0)){toast('اكتب مبلغ الديزل');break}var dcash=zz.src==='cash';
+    put('expenses',{date:v,cat:'diesel',amount:N(zz.amt),truckId:tk.id,paidFrom:dcash?'worker':'sasco',workerId:dcash?id:'',note:'تفويل',status:''});delete DZ[zk];render();toast('انسجل الديزل '+fmt(zz.amt)+(dcash?' (كاش السواق)':' (ساسكو)'));break;
+  case 'dzSrc':var zp=v.split('|');var zkk=zp[0]+'|'+zp[1];if(DZ[zkk]){var zi=document.getElementById('dz-'+zp[1]);if(zi)DZ[zkk].amt=zi.value;DZ[zkk].src=zp[2]}render();break;
   case 'lunchT':var lv=v.split('|'),lw=S.workers[lv[0]],ex0=lunchOn(lv[0],lv[1]);
     if(ex0.length)ex0.forEach(function(t){var tc=JSON.parse(JSON.stringify(t));tc.status='cancel';put('workerTx',tc)});
     else put('workerTx',{date:lv[1],workerId:lw.id,workerName:lw.name,type:'lunch',amount:sn('lunch'),fromCash:0,note:'بدل غداء',status:''});
@@ -1404,7 +1423,7 @@ document.addEventListener('click',function(ev){
   case 'lostView':openRecord('lost',id,'طلب ما انخدم',function(r){return '<dt>السبب</dt><dd>'+esc(r.reason)+'</dd><dt>اليوم</dt><dd>'+dayLabel(r.date)+' '+t12(r.time)+'</dd>'});break;
   case 'arm':confirmArm=v;render();break;
   case 'arm2':confirmArm=v;drawSheet();break;
-  case 'rec-cancel':var rc=JSON.parse(JSON.stringify(S[v][id]));rc.status='cancel';put(v,rc);confirmArm='';closeSheet();render();toast('انلغى');break;
+  case 'rec-cancel':var rc=JSON.parse(JSON.stringify(S[v][id]));rc.status='cancel';var snR=snapC([[v==='expenses'&&rc.paidFrom==='worker'?rc.workerId:v==='payments'&&rc.method==='cash'?rc.receivedBy:'',rc.date]]);put(v,rc);confirmArm='';closeSheet();render();toast('انلغى');reportC(snR);break;
   case 'rec-restore':var rr=JSON.parse(JSON.stringify(S[v][id]));rr.status='';put(v,rr);closeSheet();render();toast('رجع');break;
   case 'setv':var kv=v.split('|');setSetting(kv[0],kv[1]);render();break;
   case 'syncNow':sync(false).then(function(){toast(lastErr?lastErr:'تمت المزامنة')});break;
@@ -1444,6 +1463,7 @@ document.addEventListener('input',function(ev){
   if(id==='lo-note'){LO.note=v;return}
   if(id==='lg-pin'){LG.pin=v;return}
   if(id.indexOf('ho-')===0&&document.getElementById('view').contains(t)){HO[UI.closeDate+'|'+id.slice(3)]=v;return}
+  if(id.indexOf('dz-')===0){var dzk=UI.closeDate+'|'+id.slice(3);if(DZ[dzk])DZ[dzk].amt=v;return}
   var wmap={'wf-name':'name','wf-phone':'phone','wf-salary':'salary'};if(wmap[id]){W[wmap[id]]=v;return}
   var kmap={'kf-name':'name','kf-plate':'plate','kf-da':'dieselAmount','kf-oe':'oilEvery'};if(kmap[id]){K[kmap[id]]=v;return}
   if(t.dataset.set){clearTimeout(t._tm);var key=t.dataset.set;t._tm=setTimeout(function(){setSetting(key,key==='remindText'||key==='businessName'||key==='reportPhone'||/^(shift|lunchF|lunchT|day)/.test(key)?t.value:String(toNum(t.value)));document.getElementById('bizName').textContent=st('businessName')},600)}
